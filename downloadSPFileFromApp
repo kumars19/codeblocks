@@ -1,0 +1,111 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Net;
+using System.Web;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace SPOConnect
+{
+    class DownloadFile
+    {
+        static void Main(string[] args)
+        {
+            try
+            {
+
+                #region URL 
+                WebRequest webRequest;
+                string strAccessTokenUrl = "https://accounts.accesscontrol.windows.net/{0}/tokens/OAuth/2 ";
+
+                string tenantID = "{Your Tenant ID}"; //can be identifiled from Azure Active Directory --> Properties
+                string resourceID = "00000003-0000-0ff1-ce00-000000000000"; //it will be constant
+                string accessToken = string.Empty;
+                string strAppID = "{APP GUID}"; // pass the client id which is created in Step 1, https://<sitename>.sharepoint.com/_layouts/15/appregnew.aspx  
+                string strAppSecret = "{App Secret}"; // pass the client secret code which is created in step 1 
+                string strOrgDomain = "{organisationdomain}.sharepoint.com";
+                
+                #endregion
+                #region Get Access Token using TenantID and App secret ID & Password 
+                // URL Format  
+                //https://accounts.accesscontrol.windows.net/tenant_ID/tokens/OAuth/2  
+
+                strAccessTokenUrl = string.Format(strAccessTokenUrl, tenantID);
+                webRequest = WebRequest.Create(strAccessTokenUrl); 
+                webRequest.ContentType = "application/x-www-form-urlencoded";
+                webRequest.Method = "POST";
+                
+
+                var postData = "grant_type=client_credentials";
+                postData += "&client_id=" + strAppID + "@" + tenantID;
+                postData += "&client_secret=" + strAppSecret;
+                postData += "&resource=" + resourceID + "/" + strOrgDomain + "@" + tenantID;
+                var data = Encoding.ASCII.GetBytes(postData);
+
+                using (var stream = webRequest.GetRequestStream())
+                {
+                    stream.Write(data, 0, data.Length);
+                }
+                var response = (HttpWebResponse)webRequest.GetResponse();
+
+                var responseString = new StreamReader(response.GetResponseStream()).ReadToEnd();
+
+                string[] stArrResponse = responseString.Split(',');
+
+                //get the access token and expiry time ,etc 
+
+                foreach (var stValues in stArrResponse)
+                {
+
+                    if (stValues.StartsWith("\"access_token\":"))
+                    {
+                        accessToken = stValues.Substring(16);
+                        //Console.WriteLine(" Result => " + accessToken); 
+                        accessToken = accessToken.Substring(0, accessToken.Length - 2);
+                        // Console.WriteLine(" Result => " + accessToken); 
+                    }
+                }
+
+                Console.WriteLine("Access Token --> {0}", accessToken);
+                using (System.Net.WebClient client = new System.Net.WebClient())
+                {
+                    client.Headers.Add("X-FORMS_BASED_AUTH_ACCEPTED", "f");
+                    client.Headers.Add("Authorization", "Bearer " + accessToken);
+                    string webUrl = "{site url}";
+                    string documentLibName = "Shared%20Documents/test";
+                    string fileName = "Document.docx";
+                    Uri endpointUri = new Uri(webUrl + "/_api/web/GetFolderByServerRelativeUrl('" + documentLibName + "')/Files('" + fileName + "')/$value");
+                    byte[] filedata = client.DownloadData(endpointUri);
+                    FileStream outputStream = new FileStream(@"C:\Temp\" + fileName, FileMode.OpenOrCreate | FileMode.Append, FileAccess.Write, FileShare.None);
+                    outputStream.Write(filedata, 0, filedata.Length);
+                    outputStream.Flush(true);
+                    outputStream.Close();
+                }
+                #endregion
+                Console.ReadLine();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(" Error occured " + ex.Message);
+                Console.ReadLine();
+            }
+        }
+
+        static void GetResponseCallBack(IAsyncResult asynchronousResult)
+        {
+            try
+            {
+                ResponseState myResponseState = (ResponseState)asynchronousResult.AsyncState;
+                Console.WriteLine(" Site Info " + new StreamReader(myResponseState.response.GetResponseStream()).ReadToEnd());
+            }
+            catch (Exception ex)
+            {
+
+            }
+
+        }
+    }
+}
